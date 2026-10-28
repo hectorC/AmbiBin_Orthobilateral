@@ -1,0 +1,14 @@
+/build*/
+/out/
+/CMakeUserPresets.json
+/third_party/VST2_SDK/
+/third_party/mkl/
+/validation/local/
+*.suo
+*.user
+*.pdb
+*.obj
+*.tlog
+*.log
+.vs/
+.DS_Store

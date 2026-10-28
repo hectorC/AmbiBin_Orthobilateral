@@ -1,0 +1,38 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 22, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "windows-vs2026",
+      "displayName": "Windows x64 using Visual Studio 2026",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/windows-vs2026",
+      "cacheVariables": {
+        "AMBIBIN_BUILD_VST2": "ON", "AMBIBIN_BUILD_VST3": "OFF",
+        "AMBIBIN_BUILD_TESTS": "ON", "AMBIBIN_INSTALL_AFTER_BUILD": "OFF"
+      }
+    },
+    {
+      "name": "windows-vs2022",
+      "displayName": "Windows x64 using Visual Studio 2022",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/windows-vs2022",
+      "cacheVariables": {
+        "AMBIBIN_BUILD_VST2": "ON", "AMBIBIN_BUILD_VST3": "OFF",
+        "AMBIBIN_BUILD_TESTS": "ON", "AMBIBIN_INSTALL_AFTER_BUILD": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "windows-release", "configurePreset": "windows-vs2026", "configuration": "Release" },
+    { "name": "windows-debug", "configurePreset": "windows-vs2026", "configuration": "Debug" },
+    { "name": "windows-vs2022-release", "configurePreset": "windows-vs2022", "configuration": "Release" }
+  ],
+  "testPresets": [
+    { "name": "windows-release", "configurePreset": "windows-vs2026", "configuration": "Release", "output": { "outputOnFailure": true } },
+    { "name": "windows-debug", "configurePreset": "windows-vs2026", "configuration": "Debug", "output": { "outputOnFailure": true } },
+    { "name": "windows-vs2022-release", "configurePreset": "windows-vs2022", "configuration": "Release", "output": { "outputOnFailure": true } }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "JUCE": {
+    "url": "https://github.com/juce-framework/JUCE.git",
+    "path": "third_party/JUCE",
+    "version": "8.0.7",
+    "commit": "10a589619b452c261b2940767eb253171eb5a823"
+  },
+  "SAF": {
+    "url": "https://github.com/leomccormack/Spatial_Audio_Framework.git",
+    "path": "third_party/SAF",
+    "commit": "a71005a2216da55ca4ff8587e3bea5840edba6fe",
+    "policy": "Unmodified official revision. No project-local SAF patches are applied. This is the official base revision used before the experimental local changes, not a moving master branch."
+  },
+  "WindowsMath": {
+    "backend": "SAF_USE_INTEL_MKL_LP64",
+    "path": "third_party/mkl",
+    "runtime": "bin/saf_mkl_custom_lp64.dll",
+    "note": "Local development dependency; headers, import library and runtime are not versioned."
+  },
+  "VST2": {
+    "path": "third_party/VST2_SDK",
+    "note": "Locally supplied SDK; not versioned or fetched by the project."
+  }
+}
