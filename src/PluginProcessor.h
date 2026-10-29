@@ -29,7 +29,10 @@
 #include <atomic>
 #include <string.h>
 #include <thread>
-#define BUILD_VER_SUFFIX "" /* String to be added before the version name on the GUI (e.g. beta, alpha etc..) */
+#ifndef AMBIBIN_MULTIBUS
+#define AMBIBIN_MULTIBUS 0
+#endif
+#define BUILD_VER_SUFFIX ""
 #define DEFAULT_OSC_PORT 9000
 
 typedef enum _TIMERS{
@@ -62,6 +65,9 @@ class PluginProcessor  : public AudioProcessor,
                          public MultiTimer,
                          private OSCReceiver::Listener<OSCReceiver::RealtimeCallback>,
                          public juce::VST2ClientExtensions
+#if AMBIBIN_MULTIBUS
+                         , public juce::VST3ClientExtensions, private juce::AsyncUpdater
+#endif
 {
 public:
     static constexpr int kNumAmbiFeeds = 4;
@@ -74,6 +80,13 @@ public:
     int getAmbisonicFeedCount() const { return ambisonicFeedCount.load(); }
     void setAmbisonicFeedCount(int count) { ambisonicFeedCount.store(count == 2 ? 2 : 4); }
     int getRequiredInputChannels() { return getAmbisonicFeedCount() * ambi_bin_getNSHrequired(hAmbis[0]); }
+#if AMBIBIN_MULTIBUS
+    static constexpr int kMaxBusOrder = 4;
+    void requestBusOrder(int order);
+    VST3ClientExtensions* getVST3ClientExtensions() override { return this; }
+    void setIComponentHandler(Steinberg::FUnknown*) override;
+    bool applyBusLayouts(const BusesLayout&) override;
+#endif
 
 	int debugfloat;
 
@@ -107,6 +120,17 @@ public:
     bool getOscPortConnected(){ return osc_connected; }
     
 private:
+    void processAmbisonicBlock(AudioSampleBuffer& buffer);
+#if AMBIBIN_MULTIBUS
+    AudioSampleBuffer multibusInput;
+    std::atomic<int> requestedBusOrder {2};
+    std::atomic<bool> restoredOrderNeedsNotification {false};
+    BusesLayout layoutBeforeStateRestore;
+    Steinberg::FUnknown* vst3ComponentHandler = nullptr;
+    void handleAsyncUpdate() override;
+    void synchroniseDecoderOrder(int order);
+    void restoreBusOrder(int order);
+#endif
     std::atomic<int> ambisonicFeedCount { 4 };
     std::array<void*, kNumAmbiFeeds> hAmbis{}; /* ambi_bin handles for each ambisonic feed */
     std::array<int, kNumAmbiFeeds> inactiveFlushFrames{};

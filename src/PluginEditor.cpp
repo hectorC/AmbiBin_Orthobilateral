@@ -469,6 +469,11 @@ PluginEditor::PluginEditor (PluginProcessor* ownerFilter)
     pluginDescription->setTooltip(TRANS("Bilateral and orthobilateral Ambisonic binaural rendering. Each microphone feed is decoded to binaural, then its contribution to each output is mixed according to the listener's orientation. Select two microphones for a left-right rig or four microphones for a left-right-front-back rig. See the individual control tooltips for decoding and mixing settings."));
 
 	/* Specify screen refresh rate */
+#if AMBIBIN_MULTIBUS
+    for (int order = PluginProcessor::kMaxBusOrder+1; order <= MAX_SH_ORDER; ++order)
+        CBorderPreset->setItemEnabled(order, false);
+    CBorderPreset->setTooltip("Changes decoding order and requests matching ACN input-bus widths from the host. The VST3 supports orders 1-4. Stop playback and check REAPER's track channel count and pin routing after changing order.");
+#endif
     startTimer(TIMER_GUI_RELATED, 20);
 
     /* warnings */
@@ -1198,8 +1203,12 @@ void PluginEditor::comboBoxChanged(juce::ComboBox* comboBoxThatHasChanged)
 {
     if (comboBoxThatHasChanged == CBorderPreset.get())
     {
+#if AMBIBIN_MULTIBUS
+        hVst->setParameterNotifyingHost(k_inputOrder, float(CBorderPreset->getSelectedId()-1)/float(MAX_SH_ORDER-1));
+#else
         for (void* hAmbi : hAmbis)
             ambi_bin_setInputOrderPreset(hAmbi, (SH_ORDERS)CBorderPreset->getSelectedId());
+#endif
     }
     else if (comboBoxThatHasChanged == CBchFormat.get())
     {

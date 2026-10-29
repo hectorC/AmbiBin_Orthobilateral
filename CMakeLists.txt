@@ -12,64 +12,34 @@ if(MSVC)
     add_compile_options(/MP4)
 endif()
 
-option(AMBIBIN_BUILD_VST2 "Build the existing VST2 plug-in" ON)
-option(AMBIBIN_BUILD_VST3 "Build an additional VST3 plug-in (not the reference format)" OFF)
-option(AMBIBIN_BUILD_TESTS "Build this plug-in's regression tests" ON)
+option(AMBIBIN_BUILD_VST2 "Build VST2 when the locally supplied SDK is available" ON)
+option(AMBIBIN_BUILD_VST3 "Build the multi-microphone-bus VST3 plug-in" ON)
+option(AMBIBIN_BUILD_TESTS "Build the selected formats' regression tests" ON)
 option(AMBIBIN_INSTALL_AFTER_BUILD "Copy plug-ins to the system plug-in directory" OFF)
 set(AMBIBIN_VST2_SDK "${CMAKE_CURRENT_SOURCE_DIR}/third_party/VST2_SDK" CACHE PATH "Locally supplied VST2 SDK")
 
-include(cmake/Dependencies.cmake)
-
-set(ambibin_formats "")
+set(ambibin_vst2_available FALSE)
 if(AMBIBIN_BUILD_VST2)
-    if(NOT EXISTS "${AMBIBIN_VST2_SDK}/pluginterfaces/vst2.x/aeffect.h")
-        message(FATAL_ERROR "VST2 SDK missing. Supply third_party/VST2_SDK or set AMBIBIN_VST2_SDK.")
+    if(EXISTS "${AMBIBIN_VST2_SDK}/pluginterfaces/vst2.x/aeffect.h" AND
+       EXISTS "${AMBIBIN_VST2_SDK}/pluginterfaces/vst2.x/aeffectx.h")
+        set(ambibin_vst2_available TRUE)
+    else()
+        message(STATUS "VST2 SDK headers not found at ${AMBIBIN_VST2_SDK}; skipping VST2.")
     endif()
-    juce_set_vst2_sdk_path("${AMBIBIN_VST2_SDK}")
-    list(APPEND ambibin_formats VST)
 endif()
-if(AMBIBIN_BUILD_VST3)
-    list(APPEND ambibin_formats VST3)
+if(NOT ambibin_vst2_available AND NOT AMBIBIN_BUILD_VST3)
+    message(FATAL_ERROR "No available plug-in format. Enable AMBIBIN_BUILD_VST3 or supply the VST2 SDK.")
 endif()
-if(NOT ambibin_formats)
-    message(FATAL_ERROR "Select at least one plug-in format.")
+if(AMBIBIN_VST3_MULTIBUS_TEST)
+    message(STATUS "The Bus Test option is retired: the tested multi-bus implementation is now the main VST3.")
 endif()
 
-# Retain legacy identifiers/state while giving this project its own product name.
-set(ambibin_target AmbiBINOrthobilateral)
-juce_add_plugin(${ambibin_target}
-    VERSION "${PROJECT_VERSION}"
-    COMPANY_NAME "AALTO"
-    IS_SYNTH FALSE
-    NEEDS_MIDI_INPUT FALSE
-    NEEDS_MIDI_OUTPUT FALSE
-    IS_MIDI_EFFECT FALSE
-    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
-    COPY_PLUGIN_AFTER_BUILD ${AMBIBIN_INSTALL_AFTER_BUILD}
-    PLUGIN_MANUFACTURER_CODE LEOM
-    PLUGIN_CODE ABBI
-    FORMATS ${ambibin_formats}
-    PRODUCT_NAME "AmbiBIN Orthobilateral"
-    LV2URI "http://AALTO.sparta_ambiBIN_orthoLat.${PROJECT_VERSION}"
-)
-juce_generate_juce_header(${ambibin_target})
-target_sources(${ambibin_target} PRIVATE
-    src/PluginProcessor.cpp src/PluginProcessor.h
-    src/PluginEditor.cpp src/PluginEditor.h
-    resources/SPARTALookAndFeel.h)
-target_include_directories(${ambibin_target} PRIVATE resources)
-target_compile_features(${ambibin_target} PUBLIC cxx_std_17)
-target_compile_definitions(${ambibin_target} PUBLIC
-    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
-target_link_libraries(${ambibin_target} PRIVATE
-    saf_example_ambi_bin
-    juce::juce_recommended_config_flags
-    juce::juce_recommended_lto_flags
-    juce::juce_audio_plugin_client juce::juce_audio_utils juce::juce_osc)
-if(UNIX AND NOT APPLE)
-    target_compile_definitions(${ambibin_target} PUBLIC PLUGIN_EDITOR_DISABLE_OPENGL=1)
-else()
-    target_link_libraries(${ambibin_target} PRIVATE juce::juce_opengl)
+include(cmake/Dependencies.cmake)
+if(ambibin_vst2_available)
+    juce_set_vst2_sdk_path("${AMBIBIN_VST2_SDK}")
+endif()
+if(AMBIBIN_BUILD_TESTS)
+    enable_testing()
 endif()
 
 function(ambibin_copy_runtime target)
@@ -80,24 +50,78 @@ function(ambibin_copy_runtime target)
             VERBATIM)
     endif()
 endfunction()
-foreach(format IN LISTS ambibin_formats)
-    ambibin_copy_runtime(${ambibin_target}_${format})
-endforeach()
 
-if(AMBIBIN_BUILD_TESTS)
-    enable_testing()
-    add_executable(ambibin_tests tests/PluginTests.cpp)
-    target_compile_features(ambibin_tests PRIVATE cxx_std_17)
-    target_include_directories(ambibin_tests PRIVATE src resources
-        $<TARGET_PROPERTY:${ambibin_target},INCLUDE_DIRECTORIES>)
-    target_compile_definitions(ambibin_tests PRIVATE
-        $<TARGET_PROPERTY:${ambibin_target},COMPILE_DEFINITIONS>)
-    target_link_libraries(ambibin_tests PRIVATE ${ambibin_target})
-    set_target_properties(ambibin_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-    ambibin_copy_runtime(ambibin_tests)
-    add_test(NAME ambibin_regression COMMAND ambibin_tests test-artifacts)
-    set_tests_properties(ambibin_regression PROPERTIES WORKING_DIRECTORY "${CMAKE_BINARY_DIR}" TIMEOUT 180)
+function(ambibin_add_format target format multibus)
+    # Separate shared-code libraries preserve the established VST2 input layout.
+    juce_add_plugin(${target}
+        VERSION "${PROJECT_VERSION}"
+        COMPANY_NAME "AALTO"
+        IS_SYNTH FALSE
+        NEEDS_MIDI_INPUT FALSE
+        NEEDS_MIDI_OUTPUT FALSE
+        IS_MIDI_EFFECT FALSE
+        EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+        COPY_PLUGIN_AFTER_BUILD ${AMBIBIN_INSTALL_AFTER_BUILD}
+        PLUGIN_MANUFACTURER_CODE LEOM
+        PLUGIN_CODE ABBI
+        FORMATS ${format}
+        PRODUCT_NAME "AmbiBIN Orthobilateral"
+        LV2URI "http://AALTO.sparta_ambiBIN_orthoLat.${PROJECT_VERSION}")
+    juce_generate_juce_header(${target})
+    target_sources(${target} PRIVATE
+        src/PluginProcessor.cpp src/PluginProcessor.h
+        src/PluginEditor.cpp src/PluginEditor.h resources/SPARTALookAndFeel.h)
+    target_include_directories(${target} PRIVATE resources)
+    target_compile_features(${target} PUBLIC cxx_std_17)
+    target_compile_definitions(${target} PUBLIC
+        AMBIBIN_MULTIBUS=${multibus}
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
+    if(multibus)
+        target_include_directories(${target} PRIVATE
+            "${AMBIBIN_JUCE_SOURCE}/modules/juce_audio_processors/format_types/VST3_SDK")
+    endif()
+    target_link_libraries(${target} PRIVATE saf_example_ambi_bin
+        juce::juce_recommended_config_flags juce::juce_recommended_lto_flags
+        juce::juce_audio_plugin_client juce::juce_audio_utils juce::juce_osc)
+    if(UNIX AND NOT APPLE)
+        target_compile_definitions(${target} PUBLIC PLUGIN_EDITOR_DISABLE_OPENGL=1)
+    else()
+        target_link_libraries(${target} PRIVATE juce::juce_opengl)
+    endif()
+    ambibin_copy_runtime(${target}_${format})
+
+    if(AMBIBIN_BUILD_TESTS)
+        if(multibus)
+            set(test_target ambibin_vst3_tests)
+            set(test_source tests/MultiBusTests.cpp)
+            set(test_name ambibin_vst3_regression)
+            set(test_artifacts test-artifacts-vst3)
+            set(test_bin "${CMAKE_BINARY_DIR}/bin/vst3")
+        else()
+            set(test_target ambibin_tests)
+            set(test_source tests/PluginTests.cpp)
+            set(test_name ambibin_regression)
+            set(test_artifacts test-artifacts)
+            set(test_bin "${CMAKE_BINARY_DIR}/bin")
+        endif()
+        add_executable(${test_target} ${test_source})
+        target_compile_features(${test_target} PRIVATE cxx_std_17)
+        target_include_directories(${test_target} PRIVATE src resources
+            $<TARGET_PROPERTY:${target},INCLUDE_DIRECTORIES>)
+        target_compile_definitions(${test_target} PRIVATE
+            $<TARGET_PROPERTY:${target},COMPILE_DEFINITIONS>)
+        target_link_libraries(${test_target} PRIVATE ${target})
+        set_target_properties(${test_target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${test_bin}")
+        ambibin_copy_runtime(${test_target})
+        add_test(NAME ${test_name} COMMAND ${test_target} ${test_artifacts})
+        set_tests_properties(${test_name} PROPERTIES WORKING_DIRECTORY "${CMAKE_BINARY_DIR}" TIMEOUT 180)
+    endif()
+endfunction()
+
+if(ambibin_vst2_available)
+    ambibin_add_format(AmbiBINOrthobilateral VST 0)
 endif()
-
-message(STATUS "Independent project: ${CMAKE_CURRENT_SOURCE_DIR}")
-message(STATUS "Formats: ${ambibin_formats}; automatic installation: ${AMBIBIN_INSTALL_AFTER_BUILD}")
+if(AMBIBIN_BUILD_VST3)
+    ambibin_add_format(AmbiBINOrthobilateralVST3 VST3 1)
+endif()
+message(STATUS "AmbiBIN Orthobilateral: VST2=${ambibin_vst2_available}; VST3=${AMBIBIN_BUILD_VST3}; automatic installation=${AMBIBIN_INSTALL_AFTER_BUILD}")

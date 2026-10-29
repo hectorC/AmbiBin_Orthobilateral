@@ -68,8 +68,9 @@ audio application.
   pinned to commit `a71005a2216da55ca4ff8587e3bea5840edba6fe`.
   This is unmodified upstream SAF; no project-specific patches are applied.
   Only its `saf` and `saf_example_ambi_bin` libraries are configured.
-- Windows VST2 builds also require a locally supplied **VST2 SDK** and the
-  **Intel MKL** headers, import library, and runtime described below.
+- Windows builds require the **Intel MKL** headers, import library, and runtime
+  described below. VST2 additionally requires a locally supplied **VST2 SDK**;
+  without it, the build automatically skips VST2 and still builds VST3.
 
 Exact dependency pins are recorded in `DEPENDENCIES.json` and the submodule
 gitlinks. Clone this repository with its official dependencies:
@@ -94,7 +95,7 @@ CMake must be recent enough to recognize the selected Visual Studio generator.
 Supply these local dependencies, which are excluded from version control:
 
 ```
-third_party/VST2_SDK/             locally supplied VST2 SDK
+third_party/VST2_SDK/             optional, locally supplied VST2 SDK
 third_party/mkl/include/          Intel MKL headers
 third_party/mkl/lib/              saf_mkl_custom_lp64.lib import library
 third_party/mkl/bin/              saf_mkl_custom_lp64.dll runtime
@@ -127,20 +128,24 @@ directory when it is not on PATH:
 ./scripts/Build-Windows.ps1 -Preset windows-vs2022
 ```
 
-The default build produces VST2, with automatic installation disabled:
+The default build produces the main multi-bus VST3 and, when the VST2 SDK is
+available, the existing VST2. Automatic installation is disabled:
 
 ```
 build/windows-vs2026/AmbiBINOrthobilateral_artefacts/Release/VST/AmbiBIN Orthobilateral.dll
+build/windows-vs2026/AmbiBINOrthobilateralVST3_artefacts/Release/VST3/AmbiBIN Orthobilateral.vst3
 ```
 
-The matching MKL runtime is copied beside the plug-in and regression executable.
+The matching MKL runtime is copied beside each plug-in binary and regression executable.
 The DAW's DLL loader must be able to locate that runtime. This build does not
 install files into Windows or plug-in directories.
 
-The regression runner checks state restoration, routing, microphone-count
-modes, diagnostics, gain ramps, and editor controls. Editor snapshots are
-written to `build/windows-vs2026/test-artifacts/`. A Windows loader smoke check
-is also available:
+The regression runners check both format configurations, including state
+restoration, routing, microphone-count modes, diagnostics, gain ramps, and
+editor controls. VST3 also checks variable bus widths, disabled inputs, and
+host-notification handling. Artifacts are written to
+`build/windows-vs2026/test-artifacts/` (VST2) and `test-artifacts-vst3/` (VST3).
+When VST2 is built, a Windows loader smoke check is also available:
 
 ```powershell
 ./scripts/Test-Vst2Load.ps1
@@ -151,9 +156,24 @@ parameter count, and reports the loaded MKL runtime path. It does not replace
 DAW channel-negotiation, saved-session recall, tracking, or listening tests.
 See `VALIDATION.md` for validation scope and limitations.
 
-VST3 can be enabled with `-DAMBIBIN_BUILD_VST3=ON`. VST3 and the macOS/Linux
-build paths have not been validated here; non-Windows builds use SAF's
-corresponding numerical backends.
+Both formats are enabled by default. Use `-DAMBIBIN_BUILD_VST2=OFF` or
+`-DAMBIBIN_BUILD_VST3=OFF` at configuration time to explicitly disable one.
+`AMBIBIN_VST2_SDK` selects the local SDK directory; both
+`pluginterfaces/vst2.x/aeffect.h` and `aeffectx.h` must exist there for VST2
+to be built. A missing SDK leaves the requested option enabled but omits the
+VST2 targets, so supplying the SDK on a later configuration enables them again.
+Configuration fails clearly if no requested format is available.
+
+VST3 uses four named Ambisonic input buses (Left, Right, Front, Back) and a
+stereo output. It supports first- through fourth-order decoding; second order
+is the default. VST2 retains its original interleaved input layout and order
+controls, subject to the host's available channel count. The acoustic mixer
+and decoder processing are shared and unchanged. See
+[VST3-ROUTING.md](VST3-ROUTING.md) for REAPER routing, order changes, session
+recall, and the native VST3 validation commands.
+
+The macOS/Linux build paths have not been validated here; non-Windows builds
+use SAF's corresponding numerical backends.
 
 ## Compatibility and distribution
 
@@ -172,3 +192,8 @@ or binary distribution.
 Build outputs, the VST2 SDK, and MKL development/runtime files are intentionally
 excluded from this source repository. Provision the local dependencies above
 before building a fresh checkout.
+
+VST3 does not automatically replace VST2 instances. The earlier **Bus Test**
+VST3 also has a different identifier from the main VST3: existing test sessions
+still require that test plug-in until you manually replace their instances.
+Keep the tested binary available while migrating those projects.

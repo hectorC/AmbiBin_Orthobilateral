@@ -25,6 +25,9 @@
 #include <array>
 #include <cmath>
 #include <vector>
+#if AMBIBIN_MULTIBUS
+#include "pluginterfaces/vst/ivsteditcontroller.h"
+#endif
 
 namespace {
 enum FeedIndex {
@@ -255,11 +258,23 @@ EarFeedGains getEarFeedGains(void* hAmbi, float blendFocus, int numFeeds)
 
 PluginProcessor::PluginProcessor() :
     AudioProcessor(BusesProperties()
+#if AMBIBIN_MULTIBUS
+        .withInput("Left microphone", AudioChannelSet::ambisonic(2), true)
+        .withInput("Right microphone", AudioChannelSet::ambisonic(2), true)
+        .withInput("Front microphone", AudioChannelSet::ambisonic(2), true)
+        .withInput("Back microphone", AudioChannelSet::ambisonic(2), true)
+        .withOutput("Binaural", AudioChannelSet::stereo(), true))
+#else
         .withInput("Input", AudioChannelSet::discreteChannels(MAX_NUM_CHANNELS), true)
         .withOutput("Output", AudioChannelSet::discreteChannels(2), true))
+#endif
 {
-    for (void*& hAmbi : hAmbis)
+    for (void*& hAmbi : hAmbis) {
         ambi_bin_create(&hAmbi);
+#if AMBIBIN_MULTIBUS
+        ambi_bin_setInputOrderPreset(hAmbi, SH_ORDER_SECOND);
+#endif
+    }
   
     /* specify here on which UDP port number to receive incoming OSC messages */
     osc_port_ID = DEFAULT_OSC_PORT;
@@ -272,6 +287,11 @@ PluginProcessor::PluginProcessor() :
 
 PluginProcessor::~PluginProcessor()
 {
+#if AMBIBIN_MULTIBUS
+    cancelPendingUpdate();
+    if (vst3ComponentHandler != nullptr)
+        vst3ComponentHandler->release();
+#endif
     osc.disconnect();
     osc.removeListener(this);
     
@@ -314,8 +334,12 @@ void PluginProcessor::setParameter(int index, float newValue)
 {
     switch (index) {
     case k_inputOrder:
+#if AMBIBIN_MULTIBUS
+        requestBusOrder((int)(newValue * float(MAX_SH_ORDER-1) + 1.5f));
+#else
         for (void* hAmbi : hAmbis)
             ambi_bin_setInputOrderPreset(hAmbi, (SH_ORDERS)(int)(newValue * (float)(MAX_SH_ORDER - 1) + 1.5f));
+#endif
         break;
     case k_channelOrder:
         for (void* hAmbi : hAmbis)
@@ -520,10 +544,156 @@ bool PluginProcessor::isOutputChannelStereoPair (int /*index*/) const
     return true;
 }
 
-bool PluginProcessor::isBusesLayoutSupported(const BusesLayout& /*layouts*/) const
+bool PluginProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
+#if AMBIBIN_MULTIBUS
+    if (layouts.inputBuses.size() != 4 || layouts.outputBuses.size() != 1 ||
+        layouts.outputBuses[0] != AudioChannelSet::stereo())
+        return false;
+    const int order = layouts.inputBuses[0].getAmbisonicOrder();
+    if (order < 1 || order > kMaxBusOrder)
+        return false;
+    for (int feed = 0; feed < 4; ++feed) {
+        const auto& input = layouts.inputBuses[feed];
+        if (feed >= 2 && input.isDisabled())
+            continue;
+        if (input != AudioChannelSet::ambisonic(order))
+            return false;
+    }
+#else
+    ignoreUnused(layouts);
+#endif
     return true;
 }
+
+#if AMBIBIN_MULTIBUS
+void PluginProcessor::setIComponentHandler(Steinberg::FUnknown* unknown)
+{
+    Steinberg::Vst::IComponentHandler* handler = nullptr;
+    if (unknown != nullptr)
+        unknown->queryInterface(Steinberg::Vst::IComponentHandler_iid,
+                                reinterpret_cast<void**>(&handler));
+    if (vst3ComponentHandler != nullptr)
+        vst3ComponentHandler->release();
+    vst3ComponentHandler = handler; // queryInterface supplied an owning reference.
+}
+
+void PluginProcessor::requestBusOrder(int order)
+{
+    const int requested = jlimit(1, kMaxBusOrder, order);
+    if (requested != requestedBusOrder.load())
+        restoredOrderNeedsNotification.store(false);
+    requestedBusOrder.store(requested);
+    triggerAsyncUpdate();
+    // VST3 changes are always deferred: even offline audio may run on the
+    // message thread, so a parameter queue must not resize buses mid-process.
+    // Unwrapped processor tests can complete synchronously on the UI thread.
+    if (wrapperType != wrapperType_VST3)
+        if (auto* manager = MessageManager::getInstanceWithoutCreating())
+            if (manager->isThisTheMessageThread())
+                handleUpdateNowIfNeeded();
+}
+
+bool PluginProcessor::applyBusLayouts(const BusesLayout& layouts)
+{
+    if (!isBusesLayoutSupported(layouts) || !AudioProcessor::applyBusLayouts(layouts))
+        return false;
+    const int order = layouts.inputBuses[0].getAmbisonicOrder();
+    synchroniseDecoderOrder(order);
+    requestedBusOrder.store(order);
+    feedGainsInitialised = false;
+    sendParamChangeMessageToListeners(k_inputOrder, float(order-1)/float(MAX_SH_ORDER-1));
+    return true;
+}
+
+void PluginProcessor::synchroniseDecoderOrder(int order)
+{
+    for (void* handle : hAmbis)
+        if (handle != nullptr) {
+            // SAF compares order requests against its last initialized order.
+            // If a pending change is being cancelled back to that order, settle
+            // it first so the official setter does not leave the pending value.
+            while (ambi_bin_getCodecStatus(handle) == CODEC_STATUS_INITIALISING)
+                Thread::sleep(1);
+            if (ambi_bin_getInputOrderPreset(handle) != int(order) &&
+                ambi_bin_getNSHrequired(handle) == (int(order)+1)*(int(order)+1))
+                ambi_bin_initCodec(handle);
+            ambi_bin_setInputOrderPreset(handle, static_cast<SH_ORDERS>(order));
+        }
+}
+
+void PluginProcessor::restoreBusOrder(int savedOrder)
+{
+    // VST3 reads parameter values immediately after setStateInformation returns.
+    // Loading a project must not leave the constructor's order in the controller
+    // cache while waiting for a message-thread callback.
+    cancelPendingUpdate();
+    const ScopedLock lock(getCallbackLock());
+    restoredOrderNeedsNotification.store(false);
+    const int order = jlimit(1, kMaxBusOrder, savedOrder);
+    auto layout = getBusesLayout();
+    const auto previousLayout = layout;
+    for (int feed = 0; feed < 4; ++feed)
+        layout.inputBuses.set(feed, AudioChannelSet::ambisonic(order));
+    if (setBusesLayoutWithoutEnabling(layout)) {
+        // setBusesLayout may be a no-op when the host already restored the
+        // requested width. Synchronize the decoders in that case too.
+        synchroniseDecoderOrder(order);
+        requestedBusOrder.store(order);
+        feedGainsInitialised = false;
+        if (getBusesLayout() != previousLayout) {
+            layoutBeforeStateRestore = previousLayout;
+            restoredOrderNeedsNotification.store(true);
+            triggerAsyncUpdate();
+        }
+    }
+    // Notify only after this transaction returns, never re-enter host I/O
+    // negotiation while the host is still reading the restored parameters.
+}
+
+void PluginProcessor::handleAsyncUpdate()
+{
+    const int order = requestedBusOrder.load();
+    const auto oldLayout = getBusesLayout();
+    const bool restored = restoredOrderNeedsNotification.exchange(false);
+    const auto rollbackLayout = restored ? layoutBeforeStateRestore : oldLayout;
+    auto layout = oldLayout;
+    bool changed = false;
+    for (int feed = 0; feed < 4; ++feed) {
+        const auto desired = AudioChannelSet::ambisonic(order);
+        changed |= getBus(true, feed)->getLastEnabledLayout() != desired;
+        layout.inputBuses.set(feed, desired);
+    }
+    if (!changed) {
+        const ScopedLock lock(getCallbackLock());
+        synchroniseDecoderOrder(order);
+        if (!restored)
+            return;
+    }
+    if (changed) {
+        const ScopedLock lock(getCallbackLock());
+        if (!setBusesLayoutWithoutEnabling(layout)) {
+            requestedBusOrder.store(oldLayout.inputBuses[0].getAmbisonicOrder());
+            return;
+        }
+    }
+    // JUCE's generic updateHostDisplay does not send kIoChanged. Use its public
+    // VST3 extension hook instead of patching the official JUCE submodule.
+    if (vst3ComponentHandler != nullptr) {
+        auto* handler = static_cast<Steinberg::Vst::IComponentHandler*>(vst3ComponentHandler);
+        const auto result = handler->restartComponent(Steinberg::Vst::kIoChanged
+                                                       | Steinberg::Vst::kParamValuesChanged);
+        if (result != Steinberg::kResultOk) {
+            const ScopedLock lock(getCallbackLock());
+            auto rollback = rollbackLayout;
+            for (int feed = 0; feed < 4; ++feed)
+                rollback.inputBuses.set(feed, AudioChannelSet::ambisonic(rollbackLayout.inputBuses[0].getAmbisonicOrder()));
+            setBusesLayoutWithoutEnabling(rollback);
+        }
+    }
+    updateHostDisplay(ChangeDetails().withNonParameterStateChanged(true));
+}
+#endif
 
 bool PluginProcessor::acceptsMidi() const
 {
@@ -554,12 +724,20 @@ void PluginProcessor::changeProgramName (int /*index*/, const String& /*newName*
 
 void PluginProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+#if AMBIBIN_MULTIBUS
+    // Reconcile after either host call order: layout-then-state or state-then-
+    // layout. Codec creation below must use the final negotiated bus order.
+    synchroniseDecoderOrder(getChannelLayoutOfBus(true, 0).getAmbisonicOrder());
+#endif
     nHostBlockSize = samplesPerBlock;
     nNumInputs =  jmin(getTotalNumInputChannels(), 256);
     nNumOutputs = jmin(getTotalNumOutputChannels(), 256);
     nSampleRate = (int)(sampleRate + 0.5);
     feedGainsInitialised = false;
     inactiveFlushFrames.fill(0);
+#if AMBIBIN_MULTIBUS
+    multibusInput.setSize(4*ambi_bin_getNSHrequired(hAmbis[0]), samplesPerBlock);
+#endif
 
     for (void* hAmbi : hAmbis) {
         ambi_bin_init(hAmbi, nSampleRate);
@@ -575,6 +753,46 @@ void PluginProcessor::releaseResources()
 
 // Decode two (Left/Right) or four (Left/Right/Front/Back) Ambisonic feeds.
 void PluginProcessor::processBlock(AudioSampleBuffer& buffer, MidiBuffer& /*midiMessages*/)
+{
+#if AMBIBIN_MULTIBUS
+    // Preserve physical feed slots even if an auxiliary bus is disabled.
+    // Stage every input before writing the output, which may alias the Left bus.
+    const int channelsPerFeed = ambi_bin_getNSHrequired(hAmbis[0]);
+    // During a host I/O restart, an old-width buffer must not be interpreted
+    // using the new order. Wait silently for matching bus buffers instead.
+    if (buffer.getNumChannels() != jmax(getTotalNumInputChannels(), getTotalNumOutputChannels())) {
+        buffer.clear();
+        return;
+    }
+    multibusInput.setSize(4*channelsPerFeed, buffer.getNumSamples(), false, false, true);
+    multibusInput.clear();
+    for (int feed = 0; feed < kNumAmbiFeeds; ++feed) {
+        auto* bus = getBus(true, feed);
+        if (bus == nullptr || !bus->isEnabled()) {
+            if (feed < getAmbisonicFeedCount()) {
+                buffer.clear();
+                return;
+            }
+            continue;
+        }
+        auto input = getBusBuffer(buffer, true, feed);
+        if (input.getNumChannels() != channelsPerFeed) {
+            buffer.clear();
+            return;
+        }
+        for (int channel = 0; channel < channelsPerFeed; ++channel)
+            multibusInput.copyFrom(feed*channelsPerFeed + channel, 0, input, channel, 0, buffer.getNumSamples());
+    }
+    processAmbisonicBlock(multibusInput);
+    auto output = getBusBuffer(buffer, false, 0);
+    for (int ear = 0; ear < 2; ++ear)
+        output.copyFrom(ear, 0, multibusInput, ear, 0, buffer.getNumSamples());
+#else
+    processAmbisonicBlock(buffer);
+#endif
+}
+
+void PluginProcessor::processAmbisonicBlock(AudioSampleBuffer& buffer)
 {
     int nCurrentBlockSize = nHostBlockSize = buffer.getNumSamples();
     nNumInputs = jmin(getTotalNumInputChannels(), buffer.getNumChannels(), 256);
@@ -1025,7 +1243,11 @@ void PluginProcessor::getStateInformation (MemoryBlock& destData)
 {
     XmlElement xml("AMBIBINPLUGINSETTINGS");
     
+#if AMBIBIN_MULTIBUS
+    xml.setAttribute("order", getChannelLayoutOfBus(true, 0).getAmbisonicOrder());
+#else
     xml.setAttribute("order", ambi_bin_getInputOrderPreset(hAmbis[0]));
+#endif
   
     xml.setAttribute("UseDefaultHRIRset", ambi_bin_getUseDefaultHRIRsflag(hAmbis[0]));
     xml.setAttribute("Norm", ambi_bin_getNormType(hAmbis[0]));
@@ -1070,8 +1292,12 @@ void PluginProcessor::setStateInformation(const void* data, int sizeInBytes)
             setAmbisonicFeedCount(xmlState->getIntAttribute("ambisonicFeedCount", 4));
 
             if (xmlState->hasAttribute("order")) {
+#if AMBIBIN_MULTIBUS
+                restoreBusOrder(xmlState->getIntAttribute("order", 2));
+#else
                 for (void* hAmbi : hAmbis)
                     ambi_bin_setInputOrderPreset(hAmbi, (SH_ORDERS)xmlState->getIntAttribute("order", 2));
+#endif
             }
             if (xmlState->hasAttribute("UseDefaultHRIRset")) {
                 for (void* hAmbi : hAmbis)

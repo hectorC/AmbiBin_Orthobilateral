@@ -9,7 +9,7 @@
       "architecture": "x64",
       "binaryDir": "${sourceDir}/build/windows-vs2026",
       "cacheVariables": {
-        "AMBIBIN_BUILD_VST2": "ON", "AMBIBIN_BUILD_VST3": "OFF",
+        "AMBIBIN_BUILD_VST2": "ON", "AMBIBIN_BUILD_VST3": "ON",
         "AMBIBIN_BUILD_TESTS": "ON", "AMBIBIN_INSTALL_AFTER_BUILD": "OFF"
       }
     },
@@ -20,7 +20,7 @@
       "architecture": "x64",
       "binaryDir": "${sourceDir}/build/windows-vs2022",
       "cacheVariables": {
-        "AMBIBIN_BUILD_VST2": "ON", "AMBIBIN_BUILD_VST3": "OFF",
+        "AMBIBIN_BUILD_VST2": "ON", "AMBIBIN_BUILD_VST3": "ON",
         "AMBIBIN_BUILD_TESTS": "ON", "AMBIBIN_INSTALL_AFTER_BUILD": "OFF"
       }
     }

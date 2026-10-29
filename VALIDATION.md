@@ -1,5 +1,36 @@
 # AmbiBIN Orthobilateral — validation
 
+## Main VST3 integration
+
+The main project is `standalone-ambibin`. Its default Windows Release build
+now produces the multi-bus **AmbiBIN Orthobilateral VST3** and the preserved
+legacy VST2 when its local SDK is available. Format-specific shared-code
+targets keep VST3's four Ambisonic buses separate from VST2's existing
+interleaved-input layout. This integration does not change acoustic DSP.
+
+The main-format build and both regressions passed: 90,356 VST2 assertions and
+2,654,246 VST3 assertions. The actual VST2 DLL passed load/open/close checks,
+retaining its name, `ABBI` identifier, 15 parameters, and advertised 64/64 I/O.
+
+The native-wrapper harness loaded the main VST3 by its production name, checked
+orders 1–4, disabled auxiliary inputs, and compared all 36 second-order input
+lanes at yaw 0° and 90° against direct-processor references: 1,179,648 samples,
+maximum error zero. Fresh fourth-order state restored immediately as order 4
+with 100 inputs and two outputs, whether the host applied the layout before
+or after state restoration. REAPER acceptance of the preceding Bus Test's
+order changes and state-recall fix was separately confirmed by the user.
+The promoted main binary still merits a final REAPER listening/session check.
+
+A separate clean build directory configured with `AMBIBIN_BUILD_VST2=ON`
+but a nonexistent `AMBIBIN_VST2_SDK` successfully built only VST3 and its
+regression runner. The single VST3 regression passed. The original SDK was
+not moved or modified. Disabling VST3 in that same missing-SDK scenario
+produced the expected clear error that no plug-in format was available.
+
+Current build paths and host-testing commands are in the README and
+[VST3-ROUTING.md](VST3-ROUTING.md). The following sections retain the original
+extraction and legacy-format validation record.
+
 Validated on Windows x64, 28 October 2026, using CMake 4.3.1 and Visual Studio
 2026 (MSVC 14.51), Release configuration.
 

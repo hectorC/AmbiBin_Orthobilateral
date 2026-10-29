@@ -31,7 +31,7 @@ The SOFA reader includes its upstream third-party notices.
 ## Locally supplied Windows dependencies
 
 The VST2 SDK and Intel MKL headers, import library and custom runtime are local
-development dependencies, ignored by this project's future Git repository.
+development dependencies, ignored by this project's Git repository.
 Preserve and review their supplied license notices before redistribution.
 No SDK or Intel binary is downloaded by the build scripts, and no local system
 installation is modified.
