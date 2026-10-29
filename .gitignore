@@ -4,6 +4,10 @@
 /third_party/VST2_SDK/
 /third_party/mkl/
 /validation/local/
+/VST3-BUS-TEST.md
+/tests/MultiBusTests.cpp
+/tests/Vst3HostTests.cpp
+/tests/vst3-host/
 *.suo
 *.user
 *.pdb

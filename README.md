@@ -140,10 +140,12 @@ The matching MKL runtime is copied beside each plug-in binary and regression exe
 The DAW's DLL loader must be able to locate that runtime. This build does not
 install files into Windows or plug-in directories.
 
-The regression runners check both format configurations, including state
+The regression runners check available format configurations, including state
 restoration, routing, microphone-count modes, diagnostics, gain ramps, and
 editor controls. VST3 also checks variable bus widths, disabled inputs, and
-host-notification handling. Artifacts are written to
+host-notification handling when the optional local VST3 test sources are present.
+Those prototype test sources are excluded from Git; a fresh checkout skips
+them without affecting either plug-in build. Artifacts are written to
 `build/windows-vs2026/test-artifacts/` (VST2) and `test-artifacts-vst3/` (VST3).
 When VST2 is built, a Windows loader smoke check is also available:
 
@@ -169,8 +171,8 @@ stereo output. It supports first- through fourth-order decoding; second order
 is the default. VST2 retains its original interleaved input layout and order
 controls, subject to the host's available channel count. The acoustic mixer
 and decoder processing are shared and unchanged. See
-[VST3-ROUTING.md](VST3-ROUTING.md) for REAPER routing, order changes, session
-recall, and the native VST3 validation commands.
+[VST3-ROUTING.md](VST3-ROUTING.md) for REAPER routing, order changes, and session
+recall.
 
 The macOS/Linux build paths have not been validated here; non-Windows builds
 use SAF's corresponding numerical backends.

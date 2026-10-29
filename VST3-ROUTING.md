@@ -56,23 +56,14 @@ settings, retaining the old binary until the migrated project is verified.
 VST3 automatic replacement of VST2 is disabled. Both formats can coexist;
 do not install two differently named copies of the same legacy VST2 identifier.
 
-## Native-wrapper regression check
+## Local validation
 
-The normal build and CTest run produce both format-specific regressions when
-the VST2 SDK is present, or VST3 only when it is absent. For additional tests
-through the actual JUCE VST3 wrapper:
+Prototype test harnesses and their historical notes are local development
+tools, excluded from Git. The build skips optional VST3 regression targets
+when their sources are absent; neither plug-in format depends on them.
 
-```powershell
-cmake -S tests/vst3-host -B build/vst3-host-tests -G "Visual Studio 18 2026" -A x64
-cmake --build build/vst3-host-tests --config Release --parallel 4
-# Run only after the normal CTest run has finished writing the reference file:
-& './build/vst3-host-tests/Release/vst3_routing_check.exe' `
-  './build/windows-vs2026/AmbiBINOrthobilateralVST3_artefacts/Release/VST3/AmbiBIN Orthobilateral.vst3' `
-  './build/windows-vs2026/test-artifacts-vst3/vst3-routing-reference.bin'
-```
-
-The harness checks all 36 second-order input lanes at yaw 0° and 90° against
+The local harness checked all 36 second-order input lanes at yaw 0° and 90° against
 direct-processor references, orders 1–4, disabled auxiliary buses, and fresh
 instance state restoration with host layout applied before or after state.
-It supplements, rather than replaces, listening tests and saved-project checks
+These checks supplement, rather than replace, listening tests and saved-project checks
 in REAPER. No system plug-in directory is modified by the build or tests.
