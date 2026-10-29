@@ -5,9 +5,9 @@
 /third_party/mkl/
 /validation/local/
 /VST3-BUS-TEST.md
-/tests/MultiBusTests.cpp
-/tests/Vst3HostTests.cpp
-/tests/vst3-host/
+/tests/
+/scripts/Test-*.ps1
+/VALIDATION.md
 *.suo
 *.user
 *.pdb

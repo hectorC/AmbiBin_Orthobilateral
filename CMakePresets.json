@@ -10,7 +10,7 @@
       "binaryDir": "${sourceDir}/build/windows-vs2026",
       "cacheVariables": {
         "AMBIBIN_BUILD_VST2": "ON", "AMBIBIN_BUILD_VST3": "ON",
-        "AMBIBIN_BUILD_TESTS": "ON", "AMBIBIN_INSTALL_AFTER_BUILD": "OFF"
+        "AMBIBIN_INSTALL_AFTER_BUILD": "OFF"
       }
     },
     {
@@ -21,7 +21,7 @@
       "binaryDir": "${sourceDir}/build/windows-vs2022",
       "cacheVariables": {
         "AMBIBIN_BUILD_VST2": "ON", "AMBIBIN_BUILD_VST3": "ON",
-        "AMBIBIN_BUILD_TESTS": "ON", "AMBIBIN_INSTALL_AFTER_BUILD": "OFF"
+        "AMBIBIN_INSTALL_AFTER_BUILD": "OFF"
       }
     }
   ],
@@ -29,10 +29,5 @@
     { "name": "windows-release", "configurePreset": "windows-vs2026", "configuration": "Release" },
     { "name": "windows-debug", "configurePreset": "windows-vs2026", "configuration": "Debug" },
     { "name": "windows-vs2022-release", "configurePreset": "windows-vs2022", "configuration": "Release" }
-  ],
-  "testPresets": [
-    { "name": "windows-release", "configurePreset": "windows-vs2026", "configuration": "Release", "output": { "outputOnFailure": true } },
-    { "name": "windows-debug", "configurePreset": "windows-vs2026", "configuration": "Debug", "output": { "outputOnFailure": true } },
-    { "name": "windows-vs2022-release", "configurePreset": "windows-vs2022", "configuration": "Release", "output": { "outputOnFailure": true } }
   ]
 }

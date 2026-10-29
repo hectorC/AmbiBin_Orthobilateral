@@ -59,8 +59,8 @@ do not install two differently named copies of the same legacy VST2 identifier.
 ## Local validation
 
 Prototype test harnesses and their historical notes are local development
-tools, excluded from Git. The build skips optional VST3 regression targets
-when their sources are absent; neither plug-in format depends on them.
+tools, excluded from Git. The main build contains no regression-test targets;
+neither plug-in format depends on the local test tools.
 
 The local harness checked all 36 second-order input lanes at yaw 0° and 90° against
 direct-processor references, orders 1–4, disabled auxiliary buses, and fresh

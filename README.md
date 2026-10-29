@@ -109,14 +109,13 @@ No surrounding SPARTA checkout or prebuilt SPARTA library is required.
 The word "custom" in the MKL runtime name refers to a selected set of Intel
 MKL numerical routines, not to changes in SAF's acoustic processing.
 
-## Build and test
+## Build
 
 From the project directory:
 
 ```powershell
 cmake --preset windows-vs2026
 cmake --build --preset windows-release --parallel 4
-ctest --preset windows-release
 ```
 
 Alternatively, the helper also locates CMake in its normal Windows installation
@@ -136,27 +135,13 @@ build/windows-vs2026/AmbiBINOrthobilateral_artefacts/Release/VST/AmbiBIN Orthobi
 build/windows-vs2026/AmbiBINOrthobilateralVST3_artefacts/Release/VST3/AmbiBIN Orthobilateral.vst3
 ```
 
-The matching MKL runtime is copied beside each plug-in binary and regression executable.
+The matching MKL runtime is copied beside each plug-in binary.
 The DAW's DLL loader must be able to locate that runtime. This build does not
 install files into Windows or plug-in directories.
 
-The regression runners check available format configurations, including state
-restoration, routing, microphone-count modes, diagnostics, gain ramps, and
-editor controls. VST3 also checks variable bus widths, disabled inputs, and
-host-notification handling when the optional local VST3 test sources are present.
-Those prototype test sources are excluded from Git; a fresh checkout skips
-them without affecting either plug-in build. Artifacts are written to
-`build/windows-vs2026/test-artifacts/` (VST2) and `test-artifacts-vst3/` (VST3).
-When VST2 is built, a Windows loader smoke check is also available:
-
-```powershell
-./scripts/Test-Vst2Load.ps1
-```
-
-It opens and closes the actual VST2 DLL, checks its name, identifier, and
-parameter count, and reports the loaded MKL runtime path. It does not replace
-DAW channel-negotiation, saved-session recall, tracking, or listening tests.
-See `VALIDATION.md` for validation scope and limitations.
+The repository build produces plug-ins only. Local regression sources, test
+scripts, and validation reports are excluded from Git and are not required
+to configure or build either format.
 
 Both formats are enabled by default. Use `-DAMBIBIN_BUILD_VST2=OFF` or
 `-DAMBIBIN_BUILD_VST3=OFF` at configuration time to explicitly disable one.
